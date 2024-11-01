@@ -27,7 +27,7 @@ Binwalk can be customized and [integrated](https://github.com/ReFirmLabs/binwalk
 Install the Rust compiler:
 
 ```sh
-sudo apt update && sudo apt install curl cargo rust -y
+sudo apt update && sudo apt install curl cargo -y
 ```
 ```sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
