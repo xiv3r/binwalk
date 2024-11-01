@@ -16,17 +16,60 @@ Binwalk can be customized and [integrated](https://github.com/ReFirmLabs/binwalk
 
 ## How do I get it?
 
-The easiest way to install Binwalk and all dependencies is to [build a Docker image](https://github.com/ReFirmLabs/binwalk/wiki/Building-A-Binwalk-Docker-Image).
+> Tested
+ - Kali
+ - Debian
+ - Ubuntu
+ - Arm64 Debian Bullseye
 
-Binwalk can also be [installed](https://github.com/ReFirmLabs/binwalk/wiki/Cargo-Installation) via the Rust package manager.
+## Step 1
 
-Or, you can [compile from source](https://github.com/ReFirmLabs/binwalk/wiki/Compile-From-Source)!
+Install the Rust compiler:
 
-## How do I use it?
-
-Usage is _**simple**_, analysis is _**fast**_, and results are _**detailed**_:
-
+```sh
+sudo apt update && sudo apt install curl cargo rust -y
 ```
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+. $HOME/.cargo/env
+```
+
+## Step 2
+
+Download binwalk:
+
+```sh
+sudo apt install git -y && git clone https://github.com/ReFirmLabs/binwalk
+```
+## Step 3
+
+Install dependencies:
+
+```sh
+sudo ./binwalk/dependencies/ubuntu.sh
+```
+
+> [!TIP]
+> To only install build dependencies, skip the above script and instead:
+>
+> ```sudo apt install build-essential libfontconfig1-dev liblzma-dev```
+
+## Step 4
+
+Compile Binwalk:
+```sh
+cd binwalk
+cargo build --release
+```
+## Step 5
+
+Copy the Binwalk to /bin:
+```sh
+sudo cp binwalk/target/release/binwalk /bin
+```
+## Testing
+
+```sh
 binwalk DIR-890L_AxFW110b07.bin
 ```
 ![example output](images/output.png)
