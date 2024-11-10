@@ -23,52 +23,40 @@ Binwalk can be customized and [integrated](https://github.com/ReFirmLabs/binwalk
  - Arm64 Debian Bullseye
 
 ## Step 1
-
 Install the Rust compiler:
-
 ```sh
-sudo apt update && sudo apt install curl cargo -y
+sudo apt update && sudo apt install git curl build-essential libfontconfig1-dev liblzma-dev -y
 ```
 ```sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+```
+```sh
 . $HOME/.cargo/env
 ```
-
 ## Step 2
-
 Download binwalk:
-
 ```sh
-sudo apt install git -y && git clone https://github.com/ReFirmLabs/binwalk
+git clone https://github.com/ReFirmLabs/binwalk
 ```
 ## Step 3
-
 Install dependencies:
-
 ```sh
 sudo ./binwalk/dependencies/ubuntu.sh
 ```
-
-> [!TIP]
-> To only install build dependencies, skip the above script and instead:
->
-> ```sudo apt install build-essential libfontconfig1-dev liblzma-dev```
-
 ## Step 4
-
 Compile Binwalk:
 ```sh
 cd binwalk
+```
+```sh
 cargo build --release
 ```
 ## Step 5
-
-Copy the Binwalk to /bin:
+move binwalk to /bin:
 ```sh
-sudo cp binwalk/target/release/binwalk /bin
+sudo mv target/release/binwalk /bin
 ```
 ## Testing
-
 ```sh
 binwalk DIR-890L_AxFW110b07.bin
 ```
