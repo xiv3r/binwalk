@@ -1,4 +1,9 @@
 # Binwalk v3
+> [!Note]
+> ## Auto Install
+```sh
+wget -qO- https://raw.githubusercontent.com/xiv3r/binwalk/refs/heads/master/installer.sh | sh
+```
 
 This is an updated version of the Binwalk firmware analysis tool, re-written in Rust for speed and accuracy.
 
