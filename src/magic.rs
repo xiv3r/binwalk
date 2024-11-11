@@ -673,7 +673,7 @@ pub fn patterns() -> Vec<signatures::common::Signature> {
             name: "openssl".to_string(),
             short: false,
             magic_offset: 0,
-            always_display: false,
+            always_display: true,
             magic: signatures::openssl::openssl_crypt_magic(),
             parser: signatures::openssl::openssl_crypt_parser,
             description: signatures::openssl::DESCRIPTION.to_string(),
@@ -942,6 +942,28 @@ pub fn patterns() -> Vec<signatures::common::Signature> {
             parser: signatures::wince::wince_parser,
             description: signatures::wince::DESCRIPTION.to_string(),
             extractor: Some(extractors::wince::wince_extractor()),
+        },
+        // Dahua ZIP
+        signatures::common::Signature {
+            name: "dahua_zip".to_string(),
+            short: false,
+            magic_offset: 0,
+            always_display: false,
+            magic: signatures::dahua_zip::dahua_zip_magic(),
+            parser: signatures::dahua_zip::dahua_zip_parser,
+            description: signatures::dahua_zip::DESCRIPTION.to_string(),
+            extractor: Some(extractors::dahua_zip::dahua_zip_extractor()),
+        },
+        // DLink MH01
+        signatures::common::Signature {
+            name: "mh01".to_string(),
+            short: false,
+            magic_offset: 0,
+            always_display: false,
+            magic: signatures::mh01::mh01_magic(),
+            parser: signatures::mh01::mh01_parser,
+            description: signatures::mh01::DESCRIPTION.to_string(),
+            extractor: None,
         },
     ];
 
