@@ -1,4 +1,4 @@
-use crate::common::read_file;
+use crate::common::read_input;
 use entropy::shannon_entropy;
 use log::error;
 use plotters::prelude::*;
@@ -23,34 +23,28 @@ pub struct FileEntropy {
 
 /// Splits the supplied data up into blocks and calculates the entropy of each block.
 fn blocks(data: &[u8]) -> Vec<BlockEntropy> {
-    const MIN_BLOCK_SIZE: usize = 1024;
-    const NUM_DATA_POINTS: usize = 4096 * 10;
+    const BLOCK_SIZE: usize = 1024 * 4;
 
     let mut offset: usize = 0;
+    let mut chunker = data.chunks(BLOCK_SIZE);
     let mut entropy_blocks: Vec<BlockEntropy> = vec![];
-    let mut block_size: usize = (data.len() as f64 / NUM_DATA_POINTS as f64).ceil() as usize;
 
-    if block_size < MIN_BLOCK_SIZE {
-        block_size = MIN_BLOCK_SIZE;
-    }
+    loop {
+        match chunker.next() {
+            None => break,
+            Some(block_data) => {
+                let mut block = BlockEntropy {
+                    ..Default::default()
+                };
 
-    while offset < data.len() {
-        let mut block = BlockEntropy {
-            ..Default::default()
-        };
+                block.start = offset;
+                block.entropy = shannon_entropy(block_data);
+                block.end = block.start + block_data.len();
 
-        block.start = offset;
-        block.end = block.start + block_size;
-
-        if block.end > data.len() {
-            block.end = data.len();
+                offset = block.end;
+                entropy_blocks.push(block);
+            }
         }
-
-        block.entropy = shannon_entropy(&data[block.start..block.end]);
-
-        entropy_blocks.push(block);
-
-        offset += block_size;
     }
 
     entropy_blocks
@@ -58,13 +52,23 @@ fn blocks(data: &[u8]) -> Vec<BlockEntropy> {
 
 /// Generate a plot of a file's entropy.
 /// Will output a file to the current working directory with the name `<file_name>.png`.
-pub fn plot(file_path: impl Into<String>) -> Result<FileEntropy, EntropyError> {
+pub fn plot(
+    file_path: impl Into<String>,
+    stdin: bool,
+    png_file_path: Option<String>,
+) -> Result<FileEntropy, EntropyError> {
     const FILE_EXTENSION: &str = "png";
     const SHANNON_MAX_VALUE: i32 = 8;
     const IMAGE_PIXEL_WIDTH: u32 = 2048;
     const IMAGE_PIXEL_HEIGHT: u32 = ((IMAGE_PIXEL_WIDTH as f64) * 0.6) as u32;
 
     let target_file: String = file_path.into();
+
+    // Use the specified output file path, else generate a default output file name
+    let png_path: String = match png_file_path {
+        Some(fpath) => fpath,
+        None => format!("{}.{}", target_file, FILE_EXTENSION),
+    };
 
     // Get the base name of the target file
     let target_file_name = path::Path::new(&target_file)
@@ -74,11 +78,9 @@ pub fn plot(file_path: impl Into<String>) -> Result<FileEntropy, EntropyError> {
         .unwrap();
 
     let mut file_entropy = FileEntropy {
-        file: format!("{}.{}", target_file_name, FILE_EXTENSION),
+        file: png_path.clone(),
         ..Default::default()
     };
-
-    let png_path = file_entropy.file.clone();
 
     // Make sure the output file doesn't already exist
     if path::Path::new(&png_path).exists() {
@@ -87,7 +89,7 @@ pub fn plot(file_path: impl Into<String>) -> Result<FileEntropy, EntropyError> {
     }
 
     // Read in the target file data
-    if let Ok(file_data) = read_file(&target_file) {
+    if let Ok(file_data) = read_input(&target_file, stdin) {
         let mut points: Vec<(i32, i32)> = vec![];
 
         // Calculate the entropy for each file block

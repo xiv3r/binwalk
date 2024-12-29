@@ -96,6 +96,7 @@
 //! }
 //! ```
 
+pub mod android_bootimg;
 pub mod androidsparse;
 pub mod apfs;
 pub mod autel;
@@ -106,10 +107,15 @@ pub mod chk;
 pub mod common;
 pub mod cpio;
 pub mod cramfs;
+pub mod csman;
 pub mod deb;
+pub mod dkbs;
+pub mod dlink_tlv;
 pub mod dlob;
 pub mod dmg;
+pub mod dms;
 pub mod dtb;
+pub mod dxbc;
 pub mod efigpt;
 pub mod elf;
 pub mod ext;
@@ -120,6 +126,7 @@ pub mod iso9660;
 pub mod jboot;
 pub mod jffs2;
 pub mod linux;
+pub mod logfs;
 pub mod luks;
 pub mod lz4;
 pub mod lzfse;
@@ -141,6 +148,7 @@ pub mod romfs;
 pub mod rtk;
 pub mod seama;
 pub mod sevenzip;
+pub mod shrs;
 pub mod squashfs;
 pub mod svg;
 pub mod tplink;

@@ -3,6 +3,7 @@ use crate::extractors::common::{Chroot, ExtractionResult, Extractor, ExtractorTy
 use crate::structures::vxworks::{
     get_symtab_endianness, parse_symtab_entry, VxWorksSymbolTableEntry,
 };
+use log::error;
 use serde_json;
 
 /// Describes the VxWorks symbol table extractor
@@ -39,7 +40,7 @@ pub fn vxworks_symtab_extractor() -> Extractor {
 pub fn extract_symbol_table(
     file_data: &[u8],
     offset: usize,
-    output_directory: Option<&String>,
+    output_directory: Option<&str>,
 ) -> ExtractionResult {
     const MIN_VALID_ENTRIES: usize = 250;
     const OUTFILE_NAME: &str = "symtab.json";
@@ -87,7 +88,7 @@ pub fn extract_symbol_table(
             match serde_json::to_string_pretty(&symtab_entries) {
                 // This should never happen...
                 Err(e) => {
-                    panic!("Failed to convert VxWorks symbol table to JSON: {}", e);
+                    error!("Failed to convert VxWorks symbol table to JSON: {}", e);
                 }
 
                 // Write JSON to file

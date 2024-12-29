@@ -20,6 +20,9 @@ mod signatures;
 mod structures;
 
 fn main() {
+    // File name used when reading from stdin
+    const STDIN: &str = "stdin";
+
     // Only use one thread if unable to auto-detect available core info
     const DEFAULT_WORKER_COUNT: usize = 1;
 
@@ -50,7 +53,7 @@ fn main() {
     env_logger::init();
 
     // Process command line aguments
-    let cliargs = cliparser::parse();
+    let mut cliargs = cliparser::parse();
 
     // If --list was specified, just display a list of signatures and return
     if cliargs.list {
@@ -58,21 +61,28 @@ fn main() {
         return;
     }
 
+    // Set a dummy file name when reading from stdin
+    if cliargs.stdin {
+        cliargs.file_name = Some(STDIN.to_string());
+    }
+
     // If --list was not specified, a target file must be provided
     if cliargs.file_name.is_none() {
         panic!("No target file name specified! Try --help.");
     }
 
+    let mut json_logger = json::JsonLogger::new(cliargs.log);
+
     // If entropy analysis was requested, generate the entropy graph and return
     if cliargs.entropy {
         display::print_plain(cliargs.quiet, "Calculating file entropy...");
 
-        if let Ok(entropy_results) = entropy::plot(cliargs.file_name.unwrap()) {
+        if let Ok(entropy_results) =
+            entropy::plot(cliargs.file_name.unwrap(), cliargs.stdin, cliargs.png)
+        {
             // Log entropy results to JSON file, if requested
-            json::log(
-                &cliargs.log,
-                json::JSONType::Entropy(entropy_results.clone()),
-            );
+            json_logger.log(json::JSONType::Entropy(entropy_results.clone()));
+            json_logger.close();
 
             display::print_plain(cliargs.quiet, "entropy graph saved to: ");
             display::println_plain(cliargs.quiet, &entropy_results.file);
@@ -83,21 +93,25 @@ fn main() {
         return;
     }
 
-    // If extraction was requested, we need to initialize the output directory
-    if cliargs.extract {
+    // If extraction or data carving was requested, we need to initialize the output directory
+    if cliargs.extract || cliargs.carve {
         output_directory = Some(cliargs.directory);
     }
 
     // Initialize binwalk
-    let binwalker = binwalk::Binwalk::configure(
+    let binwalker = match binwalk::Binwalk::configure(
         cliargs.file_name,
         output_directory,
         cliargs.include,
         cliargs.exclude,
         None,
         cliargs.search_all,
-    )
-    .expect("Binwalk initialization failed");
+    ) {
+        Err(e) => {
+            panic!("Binwalk initialization failed: {}", e.message);
+        }
+        Ok(bw) => bw,
+    };
 
     // If the user specified --threads, honor that request; else, auto-detect available parallelism
     let available_workers = cliargs.threads.unwrap_or_else(|| {
@@ -161,7 +175,9 @@ fn main() {
                 &workers,
                 binwalker.clone(),
                 target_file,
+                cliargs.stdin && file_count == 0,
                 cliargs.extract,
+                cliargs.carve,
                 worker_tx.clone(),
             );
         }
@@ -189,7 +205,7 @@ fn main() {
             file_count += 1;
 
             // Log analysis results to JSON file
-            json::log(&cliargs.log, json::JSONType::Analysis(results.clone()));
+            json_logger.log(json::JSONType::Analysis(results.clone()));
 
             // Nothing found? Nothing else to do for this file.
             if results.file_map.is_empty() {
@@ -218,8 +234,10 @@ fn main() {
         }
     }
 
+    json_logger.close();
+
     // If BINWALK_RM_SYMLINK env var was set, delete the base_target_file symlink
-    if cliargs.extract && std::env::var(BINWALK_RM_SYMLINK).is_ok() {
+    if (cliargs.carve || cliargs.extract) && std::env::var(BINWALK_RM_SYMLINK).is_ok() {
         if let Err(e) = std::fs::remove_file(&binwalker.base_target_file) {
             error!(
                 "Request to remove extraction symlink file {} failed: {}",
@@ -234,7 +252,7 @@ fn main() {
         run_time,
         file_count,
         binwalker.signature_count,
-        binwalker.patterns.len(),
+        binwalker.pattern_count,
     );
 }
 
@@ -266,12 +284,33 @@ fn spawn_worker(
     pool: &ThreadPool,
     bw: binwalk::Binwalk,
     target_file: String,
+    stdin: bool,
     do_extraction: bool,
+    do_carve: bool,
     worker_tx: mpsc::Sender<AnalysisResults>,
 ) {
     pool.execute(move || {
+        // Read in file data
+        let file_data = match common::read_input(&target_file, stdin) {
+            Err(_) => {
+                error!("Failed to read {} data", target_file);
+                b"".to_vec()
+            }
+            Ok(data) => data,
+        };
+
         // Analyze target file, with extraction, if specified
-        let results = bw.analyze(&target_file, do_extraction);
+        let results = bw.analyze_buf(&file_data, &target_file, do_extraction);
+
+        // If data carving was requested as part of extraction, carve analysis results to disk
+        if do_carve {
+            let carve_count = carve_file_map(&file_data, &results);
+            info!(
+                "Carved {} data blocks to disk from {}",
+                carve_count, target_file
+            );
+        }
+
         // Report file results back to main thread
         if let Err(e) = worker_tx.send(results) {
             panic!(
@@ -279,4 +318,88 @@ fn spawn_worker(
             );
         }
     });
+}
+
+/// Carve signatures identified during analysis to separate files on disk.
+/// Returns the number of carved files created.
+/// Note that unknown blocks of file data are also carved to disk, so the number of files
+/// created may be larger than the number of results defined in results.file_map.
+fn carve_file_map(file_data: &[u8], results: &binwalk::AnalysisResults) -> usize {
+    let mut carve_count: usize = 0;
+    let mut last_known_offset: usize = 0;
+    let mut unknown_bytes: Vec<(usize, usize)> = Vec::new();
+
+    // No results, don't do anything
+    if !results.file_map.is_empty() {
+        // Loop through all identified signatures in the file
+        for signature_result in &results.file_map {
+            // If there is data between the last signature and this signature, it is some chunk of unknown data
+            if signature_result.offset > last_known_offset {
+                unknown_bytes.push((
+                    last_known_offset,
+                    signature_result.offset - last_known_offset,
+                ));
+            }
+
+            // Carve this signature's data to disk
+            if carve_file_data_to_disk(
+                &results.file_path,
+                file_data,
+                &signature_result.name,
+                signature_result.offset,
+                signature_result.size,
+            ) {
+                carve_count += 1;
+            }
+
+            // Update the last known offset to the end of this signature's data
+            last_known_offset = signature_result.offset + signature_result.size;
+        }
+
+        // Calculate the size of any remaining data from the end of the last signature to EOF
+        let remaining_data = file_data.len() - last_known_offset;
+
+        // Add any remaining unknown data to the unknown_bytes list
+        if remaining_data > 0 {
+            unknown_bytes.push((last_known_offset, remaining_data));
+        }
+
+        // All known signature data has been carved to disk, now carve any unknown blocks of data to disk
+        for (offset, size) in unknown_bytes {
+            if carve_file_data_to_disk(&results.file_path, file_data, "unknown", offset, size) {
+                carve_count += 1;
+            }
+        }
+    }
+
+    carve_count
+}
+
+/// Carves a block of file data to a new file on disk
+fn carve_file_data_to_disk(
+    source_file_path: &str,
+    file_data: &[u8],
+    name: &str,
+    offset: usize,
+    size: usize,
+) -> bool {
+    let chroot = extractors::common::Chroot::new(None);
+
+    // Carved file path will be: <source file path>_<offset>_<name>.raw
+    let carved_file_path = format!("{}_{}_{}.raw", source_file_path, offset, name,);
+
+    debug!("Carving {}", carved_file_path);
+
+    // Carve the data to disk
+    if !chroot.carve_file(&carved_file_path, file_data, offset, size) {
+        error!(
+            "Failed to carve {} [{:#X}..{:#X}] to disk",
+            carved_file_path,
+            offset,
+            offset + size,
+        );
+        return false;
+    }
+
+    true
 }
